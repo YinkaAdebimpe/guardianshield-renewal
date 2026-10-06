@@ -1,0 +1,15 @@
+venv/
+.env
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.vscode/
+
+# Data — ignore by default
+data/raw/*.csv
+data/processed/*.csv
+_archive/
+
+# But DO commit these summary outputs
+!data/processed/features_v1.csv
+!data/processed/clv_predictions_v1.csv
