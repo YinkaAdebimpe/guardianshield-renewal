@@ -1,9 +1,13 @@
 # ============================================
 # GUARDIANSHIELD INSURANCE
-# ENGAGEMENT 1 — RENEWAL DATA GENERATION
+# ENGAGEMENT 1 — RENEWAL DATA GENERATION (v2)
 # ============================================
-# Produces one row per renewal decision per customer.
-# Target: will_renew (0/1).
+# v2 changes:
+#   - Added 4 behavioural features with real signal:
+#       missed_payments, payment_method_change,
+#       days_since_last_contact, previous_renewals_count
+#   - Strengthened effect sizes for claims and premium change
+#   - No truncation on lapse (all renewal decisions retained)
 # ============================================
 
 from datetime import date, timedelta
@@ -31,25 +35,27 @@ POLICY_TYPE_WEIGHTS = [0.40, 0.25, 0.10, 0.15, 0.10]
 ACQUISITION_CHANNELS = ["Online", "Broker", "Direct", "Comparison Site"]
 ACQUISITION_WEIGHTS = [0.35, 0.20, 0.15, 0.30]
 
-# Segment design (matches Engagement 2)
 SEGMENTS = {
     "loyal": {
         "prob": 0.25,
         "premium_mean": 900,
         "renewal_prob": 0.90,
         "max_years": 8,
+        "missed_payment_lambda": 0.05,
     },
     "standard": {
         "prob": 0.50,
         "premium_mean": 650,
         "renewal_prob": 0.70,
         "max_years": 5,
+        "missed_payment_lambda": 0.30,
     },
     "price_sensitive": {
         "prob": 0.25,
         "premium_mean": 420,
         "renewal_prob": 0.40,
         "max_years": 3,
+        "missed_payment_lambda": 1.20,
     },
 }
 
@@ -113,29 +119,29 @@ def generate_customer(customer_index: int) -> dict:
         "segment": segment,
         "renewal_prob": seg["renewal_prob"],
         "max_years": seg["max_years"],
+        "missed_payment_lambda": seg["missed_payment_lambda"],
     }
 
-    
 
 # ============================================
 # RENEWAL DECISION SIMULATION
 # ============================================
 
 def simulate_renewal_history(customer: dict) -> tuple[list, bool]:
-    """
-    Simulate renewal decisions at each policy anniversary.
-    Returns: (list of renewal records, eventually_churned flag)
-    """
     records = []
     policy_start = customer["policy_start_date"]
     renewal_prob = customer["renewal_prob"]
     max_years = customer["max_years"]
+    missed_lambda = customer["missed_payment_lambda"]
 
-    # Baseline annual premium and behavioural drift
     baseline_premium = customer["annual_premium"]
     prior_year_renewed = True
     total_claims = 0
+    previous_renewals_count = 0
     eventually_churned = False
+
+    # Track payment method changes over time
+    payment_method_changes = 0
 
     for year_idx in range(1, max_years + 1):
         anniversary = add_months(policy_start, year_idx * 12)
@@ -144,24 +150,50 @@ def simulate_renewal_history(customer: dict) -> tuple[list, bool]:
 
         tenure_months = year_idx * 12
 
-        # Premium drift: small increase each year; bigger if claims
+        # Claims and premium drift
         year_claims = int(np.random.poisson(0.15))
         total_claims += year_claims
 
-        premium_change_pct = float(np.random.normal(0.05, 0.03))  # ~5% ± 3%
+        premium_change_pct = float(np.random.normal(0.05, 0.03))
         if year_claims > 0:
             premium_change_pct += 0.08 * year_claims
         annual_premium = round(baseline_premium * (1 + premium_change_pct), 2)
 
-        # Dynamic renewal probability (behaviour-adjusted)
+        # Behavioural features
+        missed_payments = int(np.random.poisson(missed_lambda))
+        payment_method_change = int(np.random.random() < 0.08)
+        payment_method_changes += payment_method_change
+        days_since_last_contact = int(np.random.exponential(180))
+        days_since_last_contact = min(days_since_last_contact, 720)
+
+        # Dynamic renewal probability — stronger effects
         p = renewal_prob
+
+        # Claims: -20% per claim (up to 3)
         if year_claims > 0:
-            p -= 0.05 * min(year_claims, 3)   # claims → higher churn
+            p -= 0.20 * min(year_claims, 3)
+
+        # Big premium increase: -25%
         if premium_change_pct > 0.10:
-            p -= 0.10                          # big price increase → churn
+            p -= 0.25
+
+        # Missed payments: -10% per missed payment
+        if missed_payments > 0:
+            p -= 0.10 * min(missed_payments, 4)
+
+        # Payment method change: -15%
+        if payment_method_change:
+            p -= 0.15
+
+        # Recent contact: -10% if contacted within last 60 days
+        if days_since_last_contact < 60:
+            p -= 0.10
+
+        # Past lapse: -35%
         if not prior_year_renewed:
-            p -= 0.20                          # past lapsed → less sticky
-        p = float(np.clip(p, 0.05, 0.98))
+            p -= 0.35
+
+        p = float(np.clip(p, 0.02, 0.98))
 
         # Renewal outcome
         will_renew = bool(np.random.random() < p)
@@ -176,6 +208,10 @@ def simulate_renewal_history(customer: dict) -> tuple[list, bool]:
             "premium_change_pct": round(premium_change_pct, 3),
             "claims_last_year": year_claims,
             "total_claims": total_claims,
+            "missed_payments": missed_payments,
+            "payment_method_change": payment_method_change,
+            "days_since_last_contact": days_since_last_contact,
+            "previous_renewals_count": previous_renewals_count,
             "payment_frequency": customer["payment_frequency"],
             "policy_type": customer["policy_type"],
             "acquisition_channel": customer["acquisition_channel"],
@@ -190,9 +226,10 @@ def simulate_renewal_history(customer: dict) -> tuple[list, bool]:
 
         if not will_renew:
             eventually_churned = True
-            break   # customer lapses; no further renewals
+        else:
+            previous_renewals_count += 1
 
-        prior_year_renewed = True
+        prior_year_renewed = will_renew
 
     return records, eventually_churned
 
@@ -247,6 +284,11 @@ def build_dataset(n_customers: int = N_CUSTOMERS):
     )
     print(f"\nRenewal decisions per customer:")
     print(renewals_df.groupby("customer_id").size().describe().round(2))
+    print(f"\nNew feature summary:")
+    print(renewals_df[[
+        "missed_payments", "payment_method_change",
+        "days_since_last_contact", "previous_renewals_count"
+    ]].describe().round(2))
 
     return customers_df, renewals_df
 
@@ -261,4 +303,4 @@ if __name__ == "__main__":
     renewals_df.to_csv(renewals_path, index=False)
 
     print(f"\nSaved: {customers_path}")
-    print(f"Saved: {renewals_path}")
+    print(f"\nSaved: {renewals_path}")
