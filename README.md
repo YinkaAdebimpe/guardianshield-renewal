@@ -3,7 +3,7 @@
 **Client:** GuardianShield Insurance (fictional)
 **Engagement:** Customer Renewal Prediction
 **Author:** Yinka Adebimpe
-**Repo:** [guardianshield-clv](https://github.com/YinkaAdebimpe/guardianshield-clv) *(update this link once Engagement 1 has its own repo)*
+**Repo:** **Repo:** [guardianshield-renewal](https://github.com/YinkaAdebimpe/guardianshield-renewal)
 
 ---
 
@@ -108,7 +108,7 @@ All four models cluster tightly in the 0.80–0.81 band — indicating the signa
 
 ```bash
 # 1. Clone the repo
-git clone <repo-url>
+git clone https://github.com/YinkaAdebimpe/guardianshield-renewal.git
 cd Engagement-1-Customer-Renewal
 
 # 2. Create and activate a virtual environment

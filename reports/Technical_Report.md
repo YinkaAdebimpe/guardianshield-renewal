@@ -346,7 +346,7 @@ The full pipeline runs end-to-end from a clean clone:
 
 ```bash
 # Clone
-git clone <repo-url>
+git clone https://github.com/YinkaAdebimpe/guardianshield-renewal.git
 cd Engagement-1-Customer-Renewal
 
 # Environment

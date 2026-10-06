@@ -141,7 +141,7 @@ The initial model, trained without the four added behavioural features, achieved
 - F1: 0.720
 
 **Repository**
-- Full code, notebooks, and documentation: [github.com/YinkaAdebimpe/guardianshield-clv](https://github.com/YinkaAdebimpe/guardianshield-clv) *(link to be updated)*
+- Full code, notebooks, and documentation: [github.com/YinkaAdebimpe/guardianshield-renewal](https://github.com/YinkaAdebimpe/guardianshield-renewal)
 - Notebooks: EDA, feature engineering, modelling
 - Data pipeline: synthetic generator + PostgreSQL loader
 - Trained models: `models/*.pkl`
